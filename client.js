@@ -21,7 +21,7 @@
  * platform and always keeps its own window listener for Ctrl+Space.
  */
 window.__ModuleLoader__.load({
-  id: '@local/quick-launcher',
+  id: 'dsh-quick-launcher',
   factory(require) {
     const React = require('react');
     const { useEffect, useMemo, useRef, useState, useSyncExternalStore } = React;
