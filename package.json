@@ -1,0 +1,51 @@
+{
+  "name": "dsh-quick-launcher",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Ctrl+Space command palette over the Harness Web UI: one box to find sessions, invoke skills, open panels and switch appearance.",
+  "license": "MIT",
+  "author": "sadkga",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "command-palette",
+    "launcher",
+    "spotlight"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sadkga/dsh-quick-launcher.git"
+  },
+  "homepage": "https://github.com/sadkga/dsh-quick-launcher#readme",
+  "bugs": {
+    "url": "https://github.com/sadkga/dsh-quick-launcher/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

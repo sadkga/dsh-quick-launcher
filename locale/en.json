@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Quick Launcher",
+    "description": "Opens a Ctrl+Space command palette over the whole window: search sessions, invoke skills, jump to panels and switch appearance."
+  }
+}
