@@ -9,14 +9,17 @@ settings, and switch appearance. Raycast / Spotlight style.
 ## Install
 
 ```bash
-dsh plugin add github:sadkga/dsh-quick-launcher
+dsh plugin add dsh-quick-launcher          # from npm
+dsh plugin add github:sadkga/dsh-quick-launcher   # or from GitHub
 ```
+
+Pin an exact release with `dsh plugin add github:sadkga/dsh-quick-launcher#v1.0.0`.
 
 Then restart the Harness (`systemctl --user restart dsh.service`, or restart the
 `dsh web` process) and press `Ctrl + Space`.
 
 Inside a conversation you can also just ask the agent to install
-`github:sadkga/dsh-quick-launcher`.
+`dsh-quick-launcher`.
 
 ## What it finds
 
