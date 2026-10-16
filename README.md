@@ -8,12 +8,16 @@ settings, and switch appearance. Raycast / Spotlight style.
 
 ## Install
 
+`--profile` names the Harness profile to install into (`web`, `desktop`, …; it
+is **required**). The rest is forwarded to `pnpm add` in that profile directory.
+
 ```bash
-dsh plugin add dsh-quick-launcher          # from npm
-dsh plugin add github:sadkga/dsh-quick-launcher   # or from GitHub
+dsh plugin --profile web add dsh-quick-launcher                 # from npm
+dsh plugin --profile web add github:sadkga/dsh-quick-launcher   # or from GitHub
 ```
 
-Pin an exact release with `dsh plugin add github:sadkga/dsh-quick-launcher#v1.0.0`.
+Pin an exact release with `… add github:sadkga/dsh-quick-launcher#v1.0.0`, or
+`… add dsh-quick-launcher@1.0.0` for the npm form.
 
 Then restart the Harness (`systemctl --user restart dsh.service`, or restart the
 `dsh web` process) and press `Ctrl + Space`.
@@ -112,7 +116,10 @@ MIT
 ### 安装
 
 ```bash
-dsh plugin add github:sadkga/dsh-quick-launcher
+# --profile 是必填的（web / desktop / …），其余参数原样转交给 pnpm add
+dsh plugin --profile web add dsh-quick-launcher
+# 或从 GitHub
+dsh plugin --profile web add github:sadkga/dsh-quick-launcher
 ```
 
 装完需要重启 Harness，然后按 `Ctrl + Space`。

@@ -1,4 +1,15 @@
 node_modules/
+
+# Credentials and local secrets must never reach a public repo. A local install
+# keeps its real key in the profile's cordis.patch.yml, not here.
+.env
+.env.*
+*.key
+*.pem
+*.p12
+credentials*
+*.tgz
+
 *.log
 .DS_Store
 .vscode/
