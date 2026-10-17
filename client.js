@@ -52,6 +52,14 @@ window.__ModuleLoader__.load({
     /** Shortest query that is worth sending to the session index. */
     const SEARCH_MIN_LENGTH = 2;
 
+    /**
+     * This bundle's own host endpoint, which signals the Host process with
+     * SIGTERM; the `Restart=always` supervisor relaunches it. Used instead of
+     * `dsh-update-checker/restart`, whose watchdog assumes an npm-installed
+     * deployment and cannot find the deploy root here.
+     */
+    const RESTART_URL = '/dsh-quick-launcher/restart';
+
     const zh = {
       'search.placeholder': '搜索会话、技能、插件、设置、面板…',
       'search.hint.1': '搜索会话、技能、插件、设置、面板…',
@@ -84,6 +92,13 @@ window.__ModuleLoader__.load({
       'command.toggleSidebar.detail': '收起或展开左侧导航栏',
       'command.archiveCurrent': '归档当前会话',
       'command.archiveCurrent.detail': '把正在查看的会话移出工作区',
+      'command.restart': '重启服务',
+      'command.restart.detail': '重启 dsh web（页面会断开并自动重连）',
+      'command.restart.working': '正在请求重启…',
+      'command.restart.queued': '重启已调度，服务恢复中…页面将自动重连',
+      'command.restart.failed': '重启失败：{error}',
+      'command.restart.unavailable': '重启功能不可用（未安装 dsh-update-checker）',
+      'command.restart.busy': '重启已在进行中',
       'appearance.light': '主题：浅色',
       'appearance.dark': '主题：深色',
       'appearance.system': '主题：跟随系统',
@@ -138,6 +153,13 @@ window.__ModuleLoader__.load({
       'command.toggleSidebar.detail': 'Collapse or expand the navigation column',
       'command.archiveCurrent': 'Archive current session',
       'command.archiveCurrent.detail': 'Move the session in view out of its workspace',
+      'command.restart': 'Restart service',
+      'command.restart.detail': 'Restart dsh web (the page disconnects and reconnects automatically)',
+      'command.restart.working': 'Requesting restart…',
+      'command.restart.queued': 'Restart scheduled, service recovering… the page will reconnect',
+      'command.restart.failed': 'Restart failed: {error}',
+      'command.restart.unavailable': 'Restart unavailable (dsh-update-checker is not installed)',
+      'command.restart.busy': 'A restart is already in progress',
       'appearance.light': 'Theme: light',
       'appearance.dark': 'Theme: dark',
       'appearance.system': 'Theme: follow system',
@@ -309,6 +331,46 @@ window.__ModuleLoader__.load({
      * @param fields - title, detail and keyword text of one row.
      * @returns the rank, or -1 when the row does not match at all.
      */
+    /**
+     * Show a short note on the page itself. The palette closes before a restart
+     * is scheduled, so the acknowledgement cannot live in the palette; without
+     * one, a restart looks exactly like a control that did nothing.
+     * @param text - what to tell the reader.
+     * @param ms - how long to keep it.
+     */
+    function pageNotice(text, ms) {
+      try {
+        const existing = document.getElementById('ql-notice');
+        if (existing !== null) existing.remove();
+        const node = document.createElement('div');
+        node.id = 'ql-notice';
+        node.setAttribute('role', 'status');
+        node.textContent = text;
+        const style = node.style;
+        style.position = 'fixed';
+        style.left = '50%';
+        style.bottom = '32px';
+        style.transform = 'translateX(-50%)';
+        style.zIndex = '2147483000';
+        style.maxWidth = 'min(560px, calc(100vw - 48px))';
+        style.padding = '10px 18px';
+        style.borderRadius = '10px';
+        style.fontSize = '13px';
+        style.lineHeight = '20px';
+        style.textAlign = 'center';
+        style.color = 'var(--dsw-alias-label-primary, #111)';
+        style.background = 'var(--dsw-alias-bg-overlay, #fff)';
+        style.boxShadow = 'var(--dsw-elevation-prominent, 0 8px 24px rgba(0,0,0,.18))';
+        style.border = '1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.12))';
+        style.pointerEvents = 'none';
+        document.body.appendChild(node);
+        window.setTimeout(() => { node.remove(); }, ms === undefined ? 6000 : ms);
+        return node;
+      } catch {
+        return null;
+      }
+    }
+
     function rankRow(query, fields) {
       const q = query.trim().toLowerCase();
       if (q === '') return 0;
@@ -419,6 +481,9 @@ window.__ModuleLoader__.load({
 
       componentDidCatch(error) {
         console.error('[quick-launcher] surface render failed:', error);
+        // Keep the failure reachable from devtools: a caught boundary otherwise
+        // leaves the cause only in a console line the reader may have scrolled past.
+        try { window.__QL_LAST_ERROR__ = String((error && error.stack) || error); } catch { /* ignore */ }
       }
 
       render() {
@@ -460,6 +525,9 @@ window.__ModuleLoader__.load({
       // the query index with `openAt: never`). Reported instead of silently
       // showing "no results", which reads as a broken search.
       const [searchDisabled, setSearchDisabled] = useState(false);
+      // undefined = not probed yet; the restart tile stays enabled until a probe
+      // says otherwise, so a slow probe never greys out a working control.
+      const [restartReady, setRestartReady] = useState(undefined);
       const inputRef = useRef(null);
       const listRef = useRef(null);
       const searchRef = useRef();
@@ -735,9 +803,11 @@ window.__ModuleLoader__.load({
           icon: entry.icon,
           title: entry.title,
           detail: entry.detail,
-          disabled: entry.disabled,
+          // The restart row's verdict and runner live in this component, because
+          // the row builder holds no React state.
+          disabled: entry.restart === true ? restartReady === false : entry.disabled,
           fields: entry.fields,
-          run: entry.run,
+          run: entry.restart === true ? () => { requestRestart(); } : entry.run,
         }));
 
         let preference = null;
@@ -902,7 +972,51 @@ window.__ModuleLoader__.load({
         });
       };
 
+      /**
+       * Probe once per open whether the updater's restart endpoint answers. The
+       * tile stays enabled while the answer is unknown, so the control is never
+       * greyed out merely because a probe has not finished.
+       *
+       * Declared before the `!open` early return on purpose: React requires every
+       * hook to run on every render, and a hook placed after that return runs only
+       * while open, which is exactly the "rendered more hooks than during the
+       * previous render" failure (React #310).
+       */
+      useEffect(() => {
+        if (!open) return undefined;
+        let cancelled = false;
+        Promise.resolve(api.restartAvailable())
+          .then((ok) => { if (!cancelled) setRestartReady(ok === true); })
+          .catch(() => { if (!cancelled) setRestartReady(false); });
+        return () => { cancelled = true; };
+      }, [open]);
+
       if (!open) return null;
+
+      /**
+       * Ask the updater to restart the service. The endpoint detaches a watchdog
+       * that stops and relaunches the process, so the page must be told what is
+       * happening: it will disconnect, then reconnect on its own.
+       */
+      const requestRestart = () => {
+        // Nothing is claimed until the Host answers. The palette closes as part
+        // of running a row, so every message goes on the page itself.
+        pageNotice(t('command.restart.working'), 12000);
+        Promise.resolve(api.requestRestart())
+          .then((result) => {
+            if (result && result.ok === true) {
+              // The Host is on its way down: this notice may be all the reader
+              // sees before the page drops.
+              pageNotice(t('command.restart.queued'), 30000);
+              return;
+            }
+            const reason = (result && result.error) || '?';
+            pageNotice(t('command.restart.failed', { error: reason }), 12000);
+          })
+          .catch((error) => {
+            pageNotice(t('command.restart.failed', { error: String((error && error.message) || error) }), 12000);
+          });
+      };
 
       const runRow = (row) => {
         if (row === undefined || row.disabled === true) return;
@@ -1399,12 +1513,64 @@ window.__ModuleLoader__.load({
                 run: () => { if (currentId !== undefined) void c.uiWorkspace.archiveSession(currentId); },
               });
             }
+            // Restart rides the updater's endpoint, which detaches a watchdog that
+            // outlives this process. This builder shares no React state, so the
+            // availability verdict and the runner are supplied by the component
+            // when it maps these rows (`restart: true` is the marker).
+            rows.push({
+              id: 'restart', icon: 'system',
+              restart: true,
+              title: translate('command.restart'), detail: translate('command.restart.detail'),
+              fields: ['restart', '重启', 'reboot', 'service', translate('command.restart'), translate('command.restart.detail')],
+              run: () => {},
+            });
             return rows;
           },
           // The label shows the binding that actually opens the palette, which is
           // this plugin's own listener rather than the catalog default: the shell
           // cannot express Ctrl+Space as a Web default, so the catalog row may
           // carry a different (legal) combination the user never presses.
+          /**
+           * Whether the restart endpoint is answering. The updater plugin owns
+           * the actual restart (it detaches a watchdog that outlives this
+           * process), so the palette only drives its HTTP entry point and must
+           * degrade when that plugin is absent.
+           * @returns true when a probe reached the endpoint's gate.
+           */
+          restartAvailable: async () => {
+            // Probed with GET, which the route answers 405 for: a restart route
+            // has no safe idempotent probe, and a POST here would restart the
+            // Host. 405 therefore proves the route and its fence are live.
+            try {
+              const response = await fetch(RESTART_URL, { method: 'GET', cache: 'no-store' });
+              return response.status === 405;
+            } catch {
+              return false;
+            }
+          },
+          /**
+           * Schedule a restart through the updater's endpoint.
+           * @returns the endpoint's verdict, or a failure shaped like one.
+           */
+          requestRestart: async () => {
+            try {
+              const response = await fetch(RESTART_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // The route is fenced by the composition's connection service
+                // (Host/Origin + the browser's login cookie), so no token travels
+                // in the body.
+                body: JSON.stringify({}),
+                cache: 'no-store',
+              });
+              let payload = null;
+              try { payload = await response.json(); } catch { payload = null; }
+              if (payload && payload.ok === true) return { ok: true };
+              return { ok: false, error: String((payload && payload.error) || ('HTTP ' + String(response.status))) };
+            } catch (error) {
+              return { ok: false, error: String((error && error.message) || error) };
+            }
+          },
           shortcutKeys: () => 'Ctrl Space',
         };
 
