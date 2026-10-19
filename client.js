@@ -81,6 +81,8 @@ window.__ModuleLoader__.load({
       'group.appearance': '外观',
       'command.newSession': '新建会话',
       'command.newSession.detail': '在当前工作区开始一次新会话',
+      'command.settings': '打开设置',
+      'command.settings.detail': '打开设置对话框（默认落在第一页）',
       'command.plugins': '打开插件管理',
       'command.plugins.detail': '查看、启用或安装插件与 Bundle',
       'command.schedules': '打开定时任务',
@@ -142,6 +144,8 @@ window.__ModuleLoader__.load({
       'group.appearance': 'Appearance',
       'command.newSession': 'New session',
       'command.newSession.detail': 'Start a new session in the current workspace',
+      'command.settings': 'Open settings',
+      'command.settings.detail': 'Open the settings dialog on its first page',
       'command.plugins': 'Open plugin manager',
       'command.plugins.detail': 'Review, enable or install plugins and bundles',
       'command.schedules': 'Open scheduled tasks',
@@ -1419,12 +1423,16 @@ window.__ModuleLoader__.load({
            * "Settings" item inside it. Older shells exposed a settings button in
            * the rail directly, so both are tried.
            *
-           * @param label - the localised settings page name.
+           * @param label - the localised settings page name, or undefined to open
+           *   the dialog on whichever page it defaults to.
            */
           openSettingsSection: (label) => {
             const navClass = /_navCell\b/;
             const cells = () => [...document.querySelectorAll('button')].filter(node => navClass.test(node.className));
             const activate = () => {
+              // No label means "just open settings": any rendered nav cell proves
+              // the dialog is up.
+              if (label === undefined) return cells().length > 0;
               const target = cells().find(node => (node.textContent || '').trim() === label);
               if (target === undefined) return false;
               target.click();
@@ -1500,6 +1508,16 @@ window.__ModuleLoader__.load({
                 run: () => { c.uiWorkspace.startSession(); },
               });
             }
+            // The settings dialog has no public open API, so this drives the same
+            // entry the shell renders (see openSettingsSection). Always present:
+            // the shell always offers that entry, and a missing one simply
+            // resolves to a no-op rather than a dead-looking row.
+            rows.push({
+              id: 'settings', icon: 'settings',
+              title: translate('command.settings'), detail: translate('command.settings.detail'),
+              fields: ['settings', '设置', 'preferences', translate('command.settings'), translate('command.settings.detail')],
+              run: () => { api.openSettingsSection(undefined); },
+            });
             if (c.layout && typeof c.layout.selectPanel === 'function') {
               // Every sidebar navigation entry, read live from the sidebar's own
               // list: the marketplace, the task board, the skill/MCP panel and
