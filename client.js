@@ -1409,11 +1409,15 @@ window.__ModuleLoader__.load({
            * Open one page of the settings dialog.
            *
            * The dialog owns its open state and its selected section behind no
-           * public API, so this drives the navigation the dialog itself renders:
-           * the shell's trigger button, then the nav cell whose text is that
-           * page's label. The lookup is deliberately narrow (a button carrying
-           * the navigation class, matched by exact label text) so a layout change
-           * makes this a no-op instead of clicking the wrong control.
+           * public API, so this drives the navigation the dialog itself renders.
+           * The lookup is deliberately narrow (a button carrying the navigation
+           * class, matched by exact label text) so a layout change makes this a
+           * no-op instead of clicking the wrong control.
+           *
+           * Reaching the dialog takes two hops in current shells: the rail's
+           * account menu (a `menu` popup, not a `dialog` one) and then the
+           * "Settings" item inside it. Older shells exposed a settings button in
+           * the rail directly, so both are tried.
            *
            * @param label - the localised settings page name.
            */
@@ -1427,14 +1431,39 @@ window.__ModuleLoader__.load({
               return true;
             };
             if (activate()) return;
-            // Not open yet: the trigger is the dialog-hosting button in the rail.
-            const trigger = [...document.querySelectorAll('button[aria-haspopup="dialog"]')]
-              .find(node => !navClass.test(node.className));
-            if (trigger === undefined) return;
-            trigger.click();
-            // The dialog mounts synchronously in practice; one frame covers the
-            // case where it does not.
-            requestAnimationFrame(() => { activate(); });
+
+            // The settings entry now lives in the rail's account menu, reached
+            // through a `menu` popup rather than the dialog popup it used to be.
+            // The menu is matched structurally (a menu popup that is not itself
+            // part of the settings navigation) because its label is localised.
+            const menuTrigger = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
+              .find(node => !navClass.test(String(node.className)));
+            if (menuTrigger !== undefined) {
+              menuTrigger.click();
+              requestAnimationFrame(() => {
+                // Inside the menu, the entry that opens the dialog is the one
+                // carrying the settings launcher's own item role; the rail entry
+                // is the first menu item in this menu, and the dialog it opens
+                // then selects the requested page.
+                const entry = [...document.querySelectorAll('[role="menuitem"]')]
+                  .find(node => !navClass.test(String(node.className)));
+                if (entry !== undefined) {
+                  entry.click();
+                  // The dialog mounts after the menu's selection settles.
+                  requestAnimationFrame(() => { requestAnimationFrame(() => { activate(); }); });
+                }
+              });
+              return;
+            }
+
+            // Older shells put a settings button in the rail itself.
+            const railSettings = [...document.querySelectorAll('button')]
+              .find(node => (node.textContent || '').trim() === label);
+            if (railSettings !== undefined) {
+              railSettings.click();
+              requestAnimationFrame(() => { activate(); });
+              return;
+            }
           },
           runSkill: (c, sessionId, name) => {
             if (!c.sessions || sessionId === undefined) return;
