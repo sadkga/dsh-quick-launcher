@@ -1457,7 +1457,10 @@ window.__ModuleLoader__.load({
               try {
                 const read = ctx.slots[source];
                 if (typeof read !== 'function') continue;
-                const list = read('sidebar.settings');
+                // Called through the service, never as a detached reference: the
+                // projection reads its own `_core`, so a bare `read(...)` throws
+                // and the store seat is missed on every single run.
+                const list = read.call(ctx.slots, 'sidebar.settings');
                 // Every registrant of the occupant slot is tried, not just the
                 // first: the store seat is what makes this a state change rather
                 // than a click on whatever the rail happens to render.
@@ -1481,7 +1484,7 @@ window.__ModuleLoader__.load({
                 const read = ctx.slots?.[source];
                 probe[source + 'Type'] = typeof read;
                 try {
-                  const list = typeof read === 'function' ? read('sidebar.settings') : undefined;
+                  const list = typeof read === 'function' ? read.call(ctx.slots, 'sidebar.settings') : undefined;
                   probe[source + 'Length'] = Array.isArray(list) ? list.length : String(list);
                   probe[source + 'Stores'] = Array.isArray(list) ? list.map(entry => (entry?.store === undefined ? 'absent' : typeof entry?.store?.create)) : 'n/a';
                 } catch (error) {
