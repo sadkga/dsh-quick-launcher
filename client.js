@@ -831,14 +831,29 @@ window.__ModuleLoader__.load({
           run: () => { caps.theme.setTheme(entry.id); },
         }));
 
-        const sources = [
-          { id: 'sessions', label: trimmed === '' ? t('group.recent') : t('group.sessions'), rows: sessionRows, idle: RECENT_LIMIT },
-          { id: 'skills', label: t('group.skills'), rows: skillRows, idle: IDLE_ROWS },
-          { id: 'plugins', label: t('group.plugins'), rows: pluginRows, idle: IDLE_ROWS },
-          { id: 'settings', label: t('group.settings'), rows: settingRows, idle: IDLE_ROWS },
+        const skillSource = { id: 'skills', label: t('group.skills'), rows: skillRows, idle: IDLE_ROWS };
+        const settingSource = { id: 'settings', label: t('group.settings'), rows: settingRows, idle: IDLE_ROWS };
+        const pluginSource = { id: 'plugins', label: t('group.plugins'), rows: pluginRows, idle: IDLE_ROWS };
+        const actionSources = [
           { id: 'commands', label: t('group.commands'), rows: commands, idle: ROW_LIMIT },
           { id: 'appearance', label: t('group.appearance'), rows: appearanceRows, idle: ROW_LIMIT },
         ];
+        // Groups are ranked independently, so their order is the tie-break the
+        // user actually feels. A section label IS the word that was typed, while
+        // a plugin row only mentions it inside a long description — so with a
+        // query the settings group leads the plugin inventory, or a plugin whose
+        // description contains "设置" outranks the section named exactly that and
+        // activating it opens the plugin panel instead of the setting asked for.
+        // The idle launcher keeps its authored order so nothing familiar moves.
+        const sources = trimmed === ''
+          ? [
+            { id: 'sessions', label: t('group.recent'), rows: sessionRows, idle: RECENT_LIMIT },
+            skillSource, pluginSource, settingSource, ...actionSources,
+          ]
+          : [
+            { id: 'sessions', label: t('group.sessions'), rows: sessionRows, idle: RECENT_LIMIT },
+            skillSource, settingSource, pluginSource, ...actionSources,
+          ];
 
         const built = [];
         for (const source of sources) {

@@ -1,6 +1,6 @@
 {
   "name": "dsh-quick-launcher",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "Ctrl+Space command palette over the Harness Web UI: one box to find sessions, invoke skills, open panels and switch appearance.",
   "license": "MIT",
