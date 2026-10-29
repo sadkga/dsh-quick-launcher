@@ -799,7 +799,7 @@ window.__ModuleLoader__.load({
           title: section.label,
           detail: t('setting.hint'),
           fields: [section.id, section.label, 'setting', '设置', t('setting.hint')],
-          run: () => { api.openSettingsSection(section.label); },
+          run: () => { api.openSettingsSection(caps, section.id); },
         }));
 
         const commands = api.commands(caps, t, currentId).map(entry => ({
@@ -1441,7 +1441,34 @@ window.__ModuleLoader__.load({
            * @param label - the localised settings page name, or undefined to open
            *   the dialog on whichever page it defaults to.
            */
-          openSettingsSection: (label) => {
+          openSettingsSection: (c, sectionId) => {
+            const label = sectionId === undefined
+              ? undefined
+              : c.sections?.find(section => section.id === sectionId)?.label;
+            // The shell keeps its settings state on the `sidebar.settings` slot
+            // store, so `openSection` mounts exactly the requested page. Driving
+            // it matters: `open()` alone keeps whatever page was shown last, and
+            // the rendered-navigation lookup can only prove the dialog is up — so
+            // a settings tile used to land on the built-in plugins page whenever
+            // that happened to be the page in view. A shell without a store falls
+            // through to the navigation lookup below.
+            const page = sectionId ?? c.sections?.[0]?.id;
+            for (const source of ['entriesOfSlot', 'entries']) {
+              try {
+                const read = ctx.slots[source];
+                if (typeof read !== 'function') continue;
+                const actions = read('sidebar.settings')?.[0]?.store?.create?.()?.actions;
+                if (actions === undefined) continue;
+                if (page !== undefined && typeof actions.openSection === 'function') {
+                  actions.openSection(page);
+                  return;
+                }
+                if (typeof actions.open === 'function') {
+                  actions.open();
+                  return;
+                }
+              } catch { /* try the next source, then the rendered navigation */ }
+            }
             const navClass = /_navCell\b/;
             const cells = () => [...document.querySelectorAll('button')].filter(node => navClass.test(node.className));
             const activate = () => {
@@ -1531,7 +1558,7 @@ window.__ModuleLoader__.load({
               id: 'settings', icon: 'settings',
               title: translate('command.settings'), detail: translate('command.settings.detail'),
               fields: ['settings', '设置', 'preferences', translate('command.settings'), translate('command.settings.detail')],
-              run: () => { api.openSettingsSection(undefined); },
+              run: () => { api.openSettingsSection(c, undefined); },
             });
             if (c.layout && typeof c.layout.selectPanel === 'function') {
               // Every sidebar navigation entry, read live from the sidebar's own
