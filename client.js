@@ -1457,19 +1457,39 @@ window.__ModuleLoader__.load({
               try {
                 const read = ctx.slots[source];
                 if (typeof read !== 'function') continue;
-                const actions = read('sidebar.settings')?.[0]?.store?.create?.()?.actions;
-                if (actions === undefined) continue;
-                if (page !== undefined && typeof actions.openSection === 'function') {
-                  actions.openSection(page);
-                  return;
-                }
-                if (typeof actions.open === 'function') {
-                  actions.open();
-                  return;
+                const list = read('sidebar.settings');
+                // Every registrant of the occupant slot is tried, not just the
+                // first: the store seat is what makes this a state change rather
+                // than a click on whatever the rail happens to render.
+                for (const entry of Array.isArray(list) ? list : []) {
+                  const actions = entry?.store?.create?.()?.actions;
+                  if (actions === undefined) continue;
+                  if (page !== undefined && typeof actions.openSection === 'function') {
+                    actions.openSection(page);
+                    return;
+                  }
+                  if (typeof actions.open === 'function') {
+                    actions.open();
+                    return;
+                  }
                 }
               } catch { /* try the next source, then the rendered navigation */ }
             }
-            console.warn('[quick-launcher] settings store unavailable; driving the rendered navigation instead');
+            console.warn('[quick-launcher] settings store unavailable', JSON.stringify((() => {
+              const probe = {};
+              for (const source of ['entriesOfSlot', 'entries']) {
+                const read = ctx.slots?.[source];
+                probe[source + 'Type'] = typeof read;
+                try {
+                  const list = typeof read === 'function' ? read('sidebar.settings') : undefined;
+                  probe[source + 'Length'] = Array.isArray(list) ? list.length : String(list);
+                  probe[source + 'Stores'] = Array.isArray(list) ? list.map(entry => (entry?.store === undefined ? 'absent' : typeof entry?.store?.create)) : 'n/a';
+                } catch (error) {
+                  probe[source + 'Error'] = String(error && error.message);
+                }
+              }
+              return probe;
+            })()));
             const navClass = /_navCell\b/;
             const cells = () => [...document.querySelectorAll('button')].filter(node => navClass.test(String(node.className)));
             // An undefined label asks for the dialog's first page, which is the
