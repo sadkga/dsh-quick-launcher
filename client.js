@@ -1469,50 +1469,70 @@ window.__ModuleLoader__.load({
                 }
               } catch { /* try the next source, then the rendered navigation */ }
             }
+            console.warn('[quick-launcher] settings store unavailable; driving the rendered navigation instead');
             const navClass = /_navCell\b/;
-            const cells = () => [...document.querySelectorAll('button')].filter(node => navClass.test(node.className));
-            const activate = () => {
-              // No label means "just open settings": any rendered nav cell proves
-              // the dialog is up.
-              if (label === undefined) return cells().length > 0;
-              const target = cells().find(node => (node.textContent || '').trim() === label);
-              if (target === undefined) return false;
-              target.click();
+            const cells = () => [...document.querySelectorAll('button')].filter(node => navClass.test(String(node.className)));
+            // An undefined label asks for the dialog's first page, which is the
+            // head of the very navigation the labels come from. Treating it as
+            // "any cell proves the dialog is up" is what left the requested page
+            // unselected and the dialog sitting on the page it already had.
+            const wanted = () => {
+              const list = cells();
+              if (list.length === 0) return undefined;
+              if (label === undefined) return list[0];
+              return list.find(node => (node.textContent || '').trim() === label);
+            };
+            const select = () => {
+              const node = wanted();
+              if (node === undefined) return false;
+              node.click();
               return true;
             };
-            if (activate()) return;
+            if (select()) return;
 
-            // The settings entry now lives in the rail's account menu, reached
-            // through a `menu` popup rather than the dialog popup it used to be.
-            // The menu is matched structurally (a menu popup that is not itself
-            // part of the settings navigation) because its label is localised.
-            const menuTrigger = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
-              .find(node => !navClass.test(String(node.className)));
-            if (menuTrigger !== undefined) {
-              menuTrigger.click();
+            // The dialog mounts asynchronously, so poll the navigation until the
+            // requested cell appears instead of waiting a fixed number of frames:
+            // a miss there is exactly what leaves the wrong page in view.
+            let frames = 0;
+            const settle = () => {
+              if (select()) return;
+              frames += 1;
+              if (frames < 120) requestAnimationFrame(settle);
+            };
+
+            // The settings entry lives in the rail's account menu now. Every menu
+            // in the rail answers `aria-haspopup="menu"`, so the trigger is
+            // identified by the item it reveals rather than by being first: the
+            // account menu is the one offering a settings item.
+            const menuLabel = /设置|偏好设置|settings|preferences/i;
+            const triggers = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
+              .filter(node => !navClass.test(String(node.className)));
+            const openMenu = (index) => {
+              if (index >= triggers.length) return false;
+              const trigger = triggers[index];
+              trigger.click();
               requestAnimationFrame(() => {
-                // Inside the menu, the entry that opens the dialog is the one
-                // carrying the settings launcher's own item role; the rail entry
-                // is the first menu item in this menu, and the dialog it opens
-                // then selects the requested page.
-                const entry = [...document.querySelectorAll('[role="menuitem"]')]
-                  .find(node => !navClass.test(String(node.className)));
-                if (entry !== undefined) {
-                  entry.click();
-                  // The dialog mounts after the menu's selection settles.
-                  requestAnimationFrame(() => { requestAnimationFrame(() => { activate(); }); });
+                const items = [...document.querySelectorAll('[role="menuitem"]')]
+                  .filter(node => !navClass.test(String(node.className)));
+                const entry = items.find(node => menuLabel.test((node.textContent || '').trim()));
+                if (entry === undefined) {
+                  trigger.click();
+                  requestAnimationFrame(() => { openMenu(index + 1); });
+                  return;
                 }
+                entry.click();
+                requestAnimationFrame(settle);
               });
-              return;
-            }
+              return true;
+            };
+            if (openMenu(0)) return;
 
             // Older shells put a settings button in the rail itself.
             const railSettings = [...document.querySelectorAll('button')]
               .find(node => (node.textContent || '').trim() === label);
             if (railSettings !== undefined) {
               railSettings.click();
-              requestAnimationFrame(() => { activate(); });
-              return;
+              requestAnimationFrame(settle);
             }
           },
           runSkill: (c, sessionId, name) => {
